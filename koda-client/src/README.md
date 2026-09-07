@@ -1,15 +1,25 @@
-Koda Client — Simple Folder Guide
+Koda Client — Folder Guide 
 
-This app has four main folders:
+Client has four main folders:
 
 - `pages/` — full-screen pages the router shows.
 - `components/` — reusable pieces that go inside those pages.
 - `constants/` — static data like avatars, colors, and labels.
--
 
 ---
 
 `pages/` - Koda's Pages/Screens
+
+Main app pages
+These pages use the shared `Layout` (header, habitat background, bottom nav).
+
+- `ParentDashboard.jsx` - home screen with today’s activities and caregivers.
+- `Activities.jsx` — form to log feeding, sleep, diaper, play, or mood.
+- `analyticsPage.jsx` — trend charts and insights, with PDF export.
+- `HistoryPage.jsx` — activity log with filters and PDF export.
+- `AccountSettings.jsx` — account settings (email/password).
+
+---
 
 `pages/Onboarding/` - Pre-dashboard content (sign-up, login, reset password, etc)
 These pages do not use the usual app layout (no bottom nav, custom background).
@@ -22,14 +32,7 @@ These pages do not use the usual app layout (no bottom nav, custom background).
 - `avatarSelection.jsx` - drag-to-spin 3D avatar picker.
 - `childRegistration.jsx` — child name/birthday form, shows the picked avatar.
 
-Main app pages
-These pages use the shared `Layout` (header, habitat background, bottom nav).
-
-- `ParentDashboard.jsx` - home screen with today’s activities and caregivers.
-- `Activities.jsx` — form to log feeding, sleep, diaper, play, or mood.
-- `analyticsPage.jsx` — trend charts and insights, with PDF export.
-- `HistoryPage.jsx` — activity log with filters and PDF export.
-- `AccountSettings.jsx` — account settings (email/password).
+---
 
 `components/` - Reusable Pieces
 
@@ -41,19 +44,27 @@ Root components
 - `DarkModeToggle.jsx` — moon/sun button (visual only for now).
 - `NavIconButton.jsx` — round icon button for the header and nav bar.
 
+---
+
 `components/avatar/` - Avatar Rendering related
 - `AvatarPortrait3D.jsx` — small framed 3D avatar preview.
 - `CharacterModel.jsx` — renders the child’s `.glb` with a gentle bob/sway, hiding silently if it fails to load.
+
+---
 
 `components/modals/` - Todays Activities + Caregiver dashboard cards/modals structure
 - `HabitatModal.jsx` — base panel for dashboard popups.
 - `ActivitiesModal.jsx` — popup showing today’s logged activities.
 - `CaregiversModal.jsx` — popup for caregivers.
 
+---
+
 `components/habitats/` - Habitat rendering related
 - `BearHabitat3D.jsx`, `BunnyHabitat3D.jsx`, `FoxHabitat3D.jsx`, `FrogHabitat3D.jsx`, `KoalaHabitat3D.jsx`, `PandaHabitat3D.jsx` — 3D scenes/habitats. 
 - `habitatRegistry.js` — maps each avatar to its habitat scene.
 - `habitatUtils.js` — shared helpers for placing objects and drawing textures.
+
+---
 
 `constants/` — Static Data
 
