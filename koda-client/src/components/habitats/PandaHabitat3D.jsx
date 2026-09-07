@@ -6,7 +6,7 @@ import * as THREE from "three";
 
 const PANDA_HEIGHT = 0.3;
 const PANDA_POSITION = [0.02, 0.74];
-const PANDA_MODEL_URL = "/models/characters/panda.glb";
+const PANDA_MODEL_URL = "/models/characters/panda/panda.glb";
 
 function seededRand(seed) {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
