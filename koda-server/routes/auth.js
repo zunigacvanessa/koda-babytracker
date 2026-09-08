@@ -8,6 +8,10 @@ const crypto = require('crypto');
 
 const router = express.Router();
 
+// Base URL of the deployed front end; falls back to local dev.
+const getClientUrl = () =>
+  (process.env.CLIENT_URL || "http://localhost:3000").replace(/\/+$/, "");
+
 const authMiddleware = (req, res, next) => {
   const token = req.header("x-auth-token");
   if (!token) {
@@ -22,16 +26,21 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ msg: "Token is not valid" });
   }
 };
-
-// Register a new user
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // Check if the user already exists
+    if (!username || !email || !password) {
+      return res.status(400).json({ msg: "Username, email, and password are all required." });
+    }
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ msg: "This email is already registered." });
+    }
+
+    let existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return res.status(400).json({ msg: "This username is already taken." });
     }
 
     // Hash the password
@@ -46,8 +55,11 @@ router.post("/register", async (req, res) => {
     });
 
     await user.save();
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET is not set in the environment - check your .env file.");
+      return res.status(500).json({ message: "Server misconfiguration: missing JWT secret." });
+    }
 
-    // Sign token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "24h",
     });
@@ -55,28 +67,24 @@ router.post("/register", async (req, res) => {
     res.status(201).json({ token });
   } catch (err) {
     console.error("FULL ERROR:", err);
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0] || "field";
+      return res.status(400).json({ msg: `This ${field} is already in use.` });
+    }
     res.status(500).json({ message: err.message });
   }
 });
-
-// Login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ msg: "Invalid credentials." });
     }
-
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ msg: "Invalid credentials." });
     }
-
-    // Sign token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "24h",
     });
@@ -98,16 +106,25 @@ router.post("/login", async (req, res) => {
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
 
+  // Same response whether or not the account exists, so the endpoint can't be used to enumerate users.
+  const genericResponse = { msg: "If an account exists for that email, a reset link is on its way." };
+
   try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ msg: "User not found" });
+    if (!email) {
+      return res.status(400).json({ msg: "Email is required." });
     }
 
-    const token = crypto.randomBytes(20).toString('hex');
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.json(genericResponse);
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
+
+    const resetUrl = `${getClientUrl()}/reset-password/${token}`;
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -117,17 +134,18 @@ router.post('/forgot-password', async (req, res) => {
       }
     });
 
-    const mailOptions = {
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: user.email,
       subject: 'Koda Password Reset',
-      text: `Reset your password here: http://localhost:3000/reset-password/${token}`
-    };
+      text: `Reset your password here: ${resetUrl}\n\nThis link expires in 1 hour. If you didn't request it, you can ignore this email.`,
+      html: `<p>Reset your password here: <a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour. If you didn't request it, you can ignore this email.</p>`
+    });
 
-    await transporter.sendMail(mailOptions);    
-    res.json({ msg: "Email sent!" });
+    res.json(genericResponse);
 
   } catch (err) {
+    console.error("forgot-password error:", err);
     res.status(500).json({ msg: "Server error" });
   }
 });
@@ -139,11 +157,15 @@ router.post('/reset-password/:token', async (req, res) => {
   try {
     const user = await User.findOne({
       resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() } // $gt means "greater than"
+      resetPasswordExpires: { $gt: Date.now() }
     });
 
     if (!user) {
       return res.status(400).json({ msg: "Invalid or expired token" });
+    }
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({ msg: "Password must be at least 8 characters." });
     }
 
     const salt = await bcrypt.genSalt(10);

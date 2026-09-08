@@ -1,269 +1,263 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ChevronLeft, PencilLine } from "lucide-react";
-import "./accountSettings.css";
-import {
-  getSelectedChildForUser,
-  setSelectedChildForUser,
-} from "../utils/authStorage";
+// Account settings page
+// what needs to be done:
+// 1. needs to be functional (have the email that was registered show up and actually save on the backend, reset password, etc.)
+// 2. ui/ux clean up 
+// 3. habitat isnt showing on the page for some reason
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { User, Users, Baby, Lock, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import '../styling/global/App.css';
+import '../styling/pages/accountSettings.css';
+import { API_URL } from '../config';
+import Layout from '../components/Layout';
+import { getSelectedChildForUser } from '../utils/authStorage';
 
-const AVATARS = ["🐻", "🦊", "🐼", "🐨", "🐸", "🦁", "🐰", "🐮", "🦋"];
+const CollapseRow = ({ open, children, topGap = false }) => (
+  <div
+    className={`account-collapse-row ${open ? 'account-collapse-row--open' : ''} ${topGap ? 'account-collapse-row--gap' : ''}`}
+  >
+    <div className="account-collapse-row-inner">
+      {children}
+    </div>
+  </div>
+);
 
 const AccountSettings = () => {
   const navigate = useNavigate();
-  const [child, setChild] = useState(null);
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [avatar, setAvatar] = useState("🐻");
-  const [weight, setWeight] = useState("");
-  const [allergies, setAllergies] = useState("");
-  const [other, setOther] = useState("");
-  const [moodExplanation, setMoodExplanation] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(true);
+  const email = localStorage.getItem('email') || '';
+  const [selectedChild, setSelectedChild] = useState(null);
 
-  const applyChildProfile = (profile) => {
-    if (!profile) return;
+  const [category, setCategory] = useState(null);
 
-    setChild(profile);
-    setName(profile.name || "");
-    setDob(profile.dob || "");
-    setAvatar(profile.avatar || "🐻");
-    setWeight(profile.weight || "");
-    setAllergies(profile.allergies || "");
-    setOther(profile.other || "");
-    setMoodExplanation(profile.moodExplanation || "");
-  };
-
-  const ageLabel = useMemo(() => {
-    if (!dob) return "Age not set";
-
-    const birthDate = new Date(dob);
-    if (Number.isNaN(birthDate.getTime())) return "Age not set";
-
-    const now = new Date();
-    let months = (now.getFullYear() - birthDate.getFullYear()) * 12 + (now.getMonth() - birthDate.getMonth());
-    if (now.getDate() < birthDate.getDate()) {
-      months -= 1;
-    }
-
-    if (months < 0) return "Age not set";
-
-    const years = Math.floor(months / 12);
-    const remainingMonths = months % 12;
-    return `${years > 0 ? `${years} year${years === 1 ? "" : "s"} ` : ""}${remainingMonths} month${remainingMonths === 1 ? "" : "s"} old`;
-  }, [dob]);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
-    const loadChild = async () => {
-      try {
-        const parsedChild = getSelectedChildForUser();
-        const legacyChildRaw = localStorage.getItem("selectedChild");
-        const legacyChild = legacyChildRaw ? JSON.parse(legacyChildRaw) : null;
-
-        const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5000";
-        const token = localStorage.getItem("token");
-
-        if (token) {
-          const response = await fetch(`${apiUrl}/api/children`, {
-            headers: {
-              "x-auth-token": token,
-            },
-          });
-
-          if (response.ok) {
-            const children = await response.json();
-            const matchedChild =
-              children.find((item) => item._id === parsedChild?._id) ||
-              children.find((item) => item._id === legacyChild?._id) ||
-              children[0] ||
-              parsedChild ||
-              legacyChild;
-
-            if (matchedChild) {
-              applyChildProfile(matchedChild);
-              setSelectedChildForUser(matchedChild);
-            } else {
-              setMessage("No baby profile found yet.");
-            }
-          } else if (parsedChild || legacyChild) {
-            applyChildProfile(parsedChild || legacyChild);
-          }
-        } else if (parsedChild || legacyChild) {
-          applyChildProfile(parsedChild || legacyChild);
-        } else {
-          setMessage("No baby profile found yet.");
-        }
-      } catch (error) {
-        console.error("Could not load child profile:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadChild();
+    const savedChild = getSelectedChildForUser();
+    if (savedChild) setSelectedChild(savedChild);
   }, []);
 
-  const handleSave = async (event) => {
+  const childName = selectedChild?.name || 'Gracie';
+
+  const panelTitles = {
+    account: 'account settings',
+    caretaker: 'caretaker settings',
+    baby: `${childName}'s settings`,
+  };
+
+  const panelIcons = {
+    account: <User size={22} strokeWidth={2} color="#315b3d" />,
+    caretaker: <Users size={22} strokeWidth={2} color="#315b3d" />,
+    baby: <Baby size={22} strokeWidth={2} color="#315b3d" />,
+  };
+
+  const openCategory = (id) => {
+    setCategory(id);
+  };
+
+  const closeCategory = () => {
+    setCategory(null);
+  };
+
+  const handleChangePassword = async (event) => {
     event.preventDefault();
 
-    if (!child?._id) {
-      setMessage("No baby profile found to update.");
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setStatusMessage('please fill out all three fields.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setStatusMessage('new passwords do not match.');
       return;
     }
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5000";
-      const token = localStorage.getItem("token");
+      setSaving(true);
+      setStatusMessage('');
+      const token = localStorage.getItem('token');
 
-      const response = await fetch(`${apiUrl}/api/children/${child._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-auth-token": token,
-        },
-        body: JSON.stringify({ name, dob, avatar, weight, allergies, other, moodExplanation }),
-      });
+      await axios.post(
+        `${API_URL}/api/account/change-password`,
+        { currentPassword, newPassword },
+        { headers: { 'x-auth-token': token } }
+      );
 
-      const updatedChild = await response.json();
-
-      if (!response.ok) {
-        setMessage(updatedChild.msg || updatedChild.error || "Could not save profile changes.");
-        return;
-      }
-
-      setSelectedChildForUser(updatedChild);
-      setChild(updatedChild);
-      setIsEditing(false);
-      setMessage("Baby profile updated.");
+      setStatusMessage('password updated!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
     } catch (error) {
-      console.error("Could not save child profile:", error);
-      setMessage("Could not save profile changes.");
+      console.error('Could not change password', error);
+      setStatusMessage('unable to update password right now. please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('email');
+    navigate('/login');
+  };
+
   return (
-    <div className="account-settings-page">
-      <div className="account-settings-shell">
-        <button className="account-back-button" onClick={() => navigate("/ParentDashboard")} type="button">
-          <ChevronLeft size={18} /> back
-        </button>
+    <Layout>
+      <div className="account-content">
 
-        <header className="account-settings-header">
-          <p className="account-settings-kicker">Account settings</p>
-          <h1>Baby profile</h1>
-          <p className="account-settings-subtitle">
-            Update the child profile the parent created from the account page.
-          </p>
-        </header>
+        <div className="glass-card glass-card--translucent">
+          <div className="card-header">
+            <SettingsIcon size={22} strokeWidth={2} color="#315b3d" />
+            <span>settings</span>
+          </div>
 
-        {loading ? (
-          <div className="account-settings-card">Loading profile...</div>
-        ) : (
-          <div className="profile-stack">
-            <form className="account-settings-card profile-card" onSubmit={handleSave}>
-              <button
-                type="button"
-                className="profile-edit-button"
-                onClick={() => setIsEditing((current) => !current)}
-                aria-label={isEditing ? "Close profile editor" : "Edit baby profile"}
-              >
-                <PencilLine size={18} />
-              </button>
+          <div className="account-category-list">
 
-              <div className="profile-preview">
-                <div className="profile-avatar">{avatar}</div>
-                <div>
-                  <p className="profile-label">{name || "Baby profile"}</p>
-                  <h2>{ageLabel}</h2>
-                </div>
-              </div>
-
-              <div className="profile-grid">
-                <div>
-                  <p className="profile-meta-label">birthday</p>
-                  <p className="profile-meta-value">{dob ? new Date(dob).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "n/a"}</p>
-                </div>
-                <div>
-                  <p className="profile-meta-label">weight</p>
-                  <p className="profile-meta-value">{weight || "n/a"}</p>
-                </div>
-                <div>
-                  <p className="profile-meta-label">allergies</p>
-                  <p className="profile-meta-value">{allergies || "n/a"}</p>
-                </div>
-                <div>
-                  <p className="profile-meta-label">other</p>
-                  <p className="profile-meta-value">{other || "n/a"}</p>
-                </div>
-              </div>
-
-              {isEditing && (
-                <div className="profile-editor">
-                  <label className="settings-field compact">
-                    <span>Baby name</span>
-                    <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Gracie" />
-                  </label>
-
-                  <label className="settings-field compact">
-                    <span>Date of birth</span>
-                    <input type="date" value={dob} onChange={(event) => setDob(event.target.value)} />
-                  </label>
-
-                  <label className="settings-field compact">
-                    <span>Weight</span>
-                    <input value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="e.g. 13.7 pounds" />
-                  </label>
-
-                  <label className="settings-field compact">
-                    <span>Allergies</span>
-                    <input value={allergies} onChange={(event) => setAllergies(event.target.value)} placeholder="e.g. n/a" />
-                  </label>
-
-                  <label className="settings-field compact">
-                    <span>Other</span>
-                    <input value={other} onChange={(event) => setOther(event.target.value)} placeholder="e.g. n/a" />
-                  </label>
-
-                  <label className="settings-field compact">
-                    <span>Mood explanation</span>
-                    <textarea value={moodExplanation} onChange={(event) => setMoodExplanation(event.target.value)} placeholder="How the baby has been feeling lately" rows="3" />
-                  </label>
-
-                  <div className="settings-field compact">
-                    <span>Avatar</span>
-                    <div className="avatar-picker">
-                      {AVATARS.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`avatar-option${avatar === option ? " selected" : ""}`}
-                          onClick={() => setAvatar(option)}
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
+            <CollapseRow open={category === null || category === 'account'}>
+              {category === 'account' ? (
+                <div className="glass-card account-expanded-card">
+                  <div className="card-header account-card-header--flush">
+                    {panelIcons.account}
+                    <span>{panelTitles.account}</span>
                   </div>
 
-                  <button className="save-profile-button" type="submit">
-                    Save changes
+                  <div className="account-panel-body">
+                    <div>
+                      <p className="empty-msg-light account-empty-msg">
+                        {email || 'no email on file'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="card-header account-card-header--panel">
+                        <Lock size={20} strokeWidth={2} color="#315b3d" />
+                        <span>change password</span>
+                      </div>
+
+                      <form onSubmit={handleChangePassword}>
+                        <label className="account-field-label" htmlFor="currentPassword">current password</label>
+                        <input
+                          id="currentPassword"
+                          type="password"
+                          className="account-field-input"
+                          value={currentPassword}
+                          onChange={(event) => setCurrentPassword(event.target.value)}
+                        />
+
+                        <label className="account-field-label" htmlFor="newPassword">new password</label>
+                        <input
+                          id="newPassword"
+                          type="password"
+                          className="account-field-input"
+                          value={newPassword}
+                          onChange={(event) => setNewPassword(event.target.value)}
+                        />
+
+                        <label className="account-field-label" htmlFor="confirmPassword">confirm new password</label>
+                        <input
+                          id="confirmPassword"
+                          type="password"
+                          className="account-field-input"
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                        />
+
+                        {statusMessage && (
+                          <p className="empty-msg-light account-empty-msg--status">{statusMessage}</p>
+                        )}
+
+                        <button
+                          type="submit"
+                          className={`glass-card save-btn-card ${saving ? 'account-save-btn--saving' : ''}`}
+                          disabled={saving}
+                        >
+                          <span>{saving ? 'saving…' : 'save password'}</span>
+                        </button>
+                      </form>
+                    </div>
+
+                    <button type="button" className="glass-card save-btn-card" onClick={handleLogout}>
+                      <LogOut size={20} />
+                      <span>log out</span>
+                    </button>
+                  </div>
+
+                  <button type="button" className="account-toggle-link account-toggle-link--bottom" onClick={closeCategory}>
+                    show less
                   </button>
                 </div>
+              ) : (
+                <button type="button" className="glass-card save-btn-card" onClick={() => openCategory('account')}>
+                  <User size={20} />
+                  <span>account settings</span>
+                </button>
               )}
+            </CollapseRow>
 
-              {message && <p className="settings-message">{message}</p>}
-            </form>
+            <CollapseRow open={category === null || category === 'caretaker'}>
+              {category === 'caretaker' ? (
+                <div className="glass-card account-expanded-card">
+                  <div className="card-header account-card-header--flush">
+                    {panelIcons.caretaker}
+                    <span>{panelTitles.caretaker}</span>
+                  </div>
 
-            <div className="account-settings-card mood-card">
-              <p className="profile-label">mood explanation</p>
-              <p className="mood-copy">{moodExplanation || "No mood note added yet."}</p>
-            </div>
+                  <p className="empty-msg-light account-empty-msg--panel">
+                    caretaker settings are coming soon.
+                  </p>
+
+                  <button type="button" className="account-toggle-link account-toggle-link--bottom" onClick={closeCategory}>
+                    show less
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="glass-card save-btn-card" onClick={() => openCategory('caretaker')}>
+                  <Users size={20} />
+                  <span>caretaker settings</span>
+                </button>
+              )}
+            </CollapseRow>
+
+            <CollapseRow open={category === null || category === 'baby'}>
+              {category === 'baby' ? (
+                <div className="glass-card account-expanded-card">
+                  <div className="card-header account-card-header--flush">
+                    {panelIcons.baby}
+                    <span>{panelTitles.baby}</span>
+                  </div>
+
+                  <div className="account-baby-panel-body">
+                    <button
+                      type="button"
+                      className="glass-card save-btn-card"
+                      onClick={() => navigate('/babysettings')}
+                    >
+                      <Baby size={20} />
+                      <span>go to {childName}'s settings</span>
+                    </button>
+                  </div>
+
+                  <button type="button" className="account-toggle-link account-toggle-link--bottom" onClick={closeCategory}>
+                    show less
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="glass-card save-btn-card" onClick={() => openCategory('baby')}>
+                  <Baby size={20} />
+                  <span>{childName}'s settings</span>
+                </button>
+              )}
+            </CollapseRow>
+
           </div>
-        )}
+        </div>
+
       </div>
-    </div>
+    </Layout>
   );
 };
 
