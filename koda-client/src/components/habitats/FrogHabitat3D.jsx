@@ -1,5 +1,3 @@
-// Frog habitat
-
 import React, { useRef, useEffect, useState, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, OrbitControls } from "@react-three/drei";
@@ -143,6 +141,7 @@ function buildWaterTexture() {
 const POND_RADIUS_X = 6.5;
 const POND_FRONT_Z = 2.0;
 const POND_BACK_Z = 7.5;
+const HOME_PAD_POSITION = [0, (POND_FRONT_Z - POND_BACK_Z) / 2];
 
 function pondNorm(x, z) {
   const zRadius = z >= 0 ? POND_FRONT_Z : POND_BACK_Z;
@@ -185,15 +184,83 @@ function Pond() {
     []
   );
   const ref = useRef();
+  const sheenRef = useRef();
   useFrame(({ clock }) => {
-    if (!ref.current) return;
     const t = clock.getElapsedTime();
-    ref.current.material.opacity = 0.88 + Math.sin(t * 0.6) * 0.03;
+    if (ref.current) {
+      ref.current.material.opacity = 0.88 + Math.sin(t * 0.6) * 0.03;
+    }
+    if (sheenRef.current) {
+      sheenRef.current.material.opacity = 0.16 + Math.sin(t * 0.8) * 0.05;
+      sheenRef.current.position.x = -1.6 + Math.sin(t * 0.22) * 0.5;
+    }
   });
   return (
-    <mesh ref={ref} geometry={geo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
-      <meshStandardMaterial map={tex} roughness={0.2} metalness={0.15} transparent opacity={0.9} />
-    </mesh>
+    <>
+      <mesh ref={ref} geometry={geo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
+        <meshStandardMaterial map={tex} roughness={0.2} metalness={0.15} transparent opacity={0.9} />
+      </mesh>
+      {/* drifting sun sheen across the surface */}
+      <mesh
+        ref={sheenRef}
+        rotation={[-Math.PI / 2, 0, 0.4]}
+        position={[-1.6, 0.02, -2.0]}
+        scale={[1, 0.5, 1]}
+      >
+        <circleGeometry args={[1.7, 28]} />
+        <meshBasicMaterial color="#eafaf4" transparent opacity={0.18} depthWrite={false} />
+      </mesh>
+    </>
+  );
+}
+
+function buildShoreStones(count = 26, margin = 1.08) {
+  const stones = [];
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * Math.PI * 2 + (seededRand(i * 3.7) - 0.5) * 0.25;
+    const wobble = seededRand(i * 5.1 + 2);
+    const r = margin + wobble * 0.14;
+    const zRadius = Math.sin(theta) >= 0 ? POND_BACK_Z : POND_FRONT_Z;
+    const x = Math.cos(theta) * POND_RADIUS_X * r;
+    const z = Math.sin(theta) * zRadius * r;
+    if (Math.hypot(x - HOME_PAD_POSITION[0], z - HOME_PAD_POSITION[1]) < 1.6) continue;
+    stones.push({
+      position: [x, 0.03 + wobble * 0.02, z],
+      scale: 0.15 + wobble * 0.16,
+      rotation: theta + wobble,
+      dark: i % 2 === 1,
+    });
+  }
+  return stones;
+}
+const SHORE_STONES = buildShoreStones();
+
+function MossyStone({ position, scale, rotation, dark }) {
+  return (
+    <group position={position} rotation={[0.15, rotation, 0.1]} scale={scale}>
+      <mesh castShadow receiveShadow>
+        <dodecahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial color={dark ? "#8d9aa6" : "#a3aebc"} roughness={0.85} />
+      </mesh>
+      <mesh position={[0.05, 0.5, -0.05]} scale={[0.78, 0.24, 0.72]} receiveShadow>
+        <sphereGeometry args={[1, 12, 10]} />
+        <meshStandardMaterial color="#7fae5f" roughness={1} />
+      </mesh>
+      <mesh position={[-0.42, 0.26, 0.3]} scale={[0.34, 0.13, 0.3]} receiveShadow>
+        <sphereGeometry args={[1, 10, 8]} />
+        <meshStandardMaterial color="#5c9c53" roughness={1} />
+      </mesh>
+    </group>
+  );
+}
+
+function ShoreStones() {
+  return (
+    <>
+      {SHORE_STONES.map((s, i) => (
+        <MossyStone key={i} {...s} />
+      ))}
+    </>
   );
 }
 
@@ -344,8 +411,6 @@ function MudPatch({ position = [0, 2.5], radius = 0.9, opacity = 1 }) {
 function FrontMudFade() {
   return <MudPatch position={[0.1, 1.85]} radius={1.4} opacity={0.35} />;
 }
-
-const HOME_PAD_POSITION = [0, (POND_FRONT_Z - POND_BACK_Z) / 2];
 
 const POND_CLUSTER_OFFSET = [0, 0, 2.6];
 
@@ -845,6 +910,48 @@ class LilypadsErrorBoundary extends React.Component {
   }
 }
 
+function LilyBlossom({ position, color, scale = 1 }) {
+  const ref = useRef();
+  const phase = useMemo(() => Math.random() * Math.PI * 2, []);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const t = clock.getElapsedTime();
+    ref.current.position.y = 0.03 + Math.sin(t * 0.7 + phase) * 0.012;
+  });
+  return (
+    <group ref={ref} position={[position[0], 0.03, position[1]]} scale={scale}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2;
+        return (
+          <mesh key={i} position={[Math.cos(a) * 0.09, 0, Math.sin(a) * 0.09]} rotation={[0.75, a, 0]} castShadow>
+            <coneGeometry args={[0.06, 0.16, 4]} />
+            <meshStandardMaterial color={color} roughness={0.5} />
+          </mesh>
+        );
+      })}
+      <mesh position={[0, 0.05, 0]}>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial color="#ffe580" roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+const LILY_BLOSSOM_PLACEMENTS = [
+  { position: [1.55, -1.35], color: "#ffd9e8" },
+  { position: [-3.4, -1.7], color: "#fff3b0" },
+];
+
+function LilyBlossoms() {
+  return (
+    <>
+      {LILY_BLOSSOM_PLACEMENTS.map((b, i) => (
+        <LilyBlossom key={i} {...b} />
+      ))}
+    </>
+  );
+}
+
 function generateCattailRing(count = 18, margin = 0.9) {
   const placements = [];
   for (let i = 0; i < count; i++) {
@@ -1044,6 +1151,37 @@ function Firefly({ bounds, speed, height }) {
   );
 }
 
+function MistWisp({ radius, speed, height, phase, scale }) {
+  const ref = useRef();
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const t = clock.getElapsedTime() * speed + phase;
+    ref.current.position.set(Math.cos(t) * radius, height, Math.sin(t) * radius);
+    ref.current.material.opacity = 0.12 + Math.sin(t * 1.3) * 0.04;
+  });
+  return (
+    <mesh ref={ref} scale={scale}>
+      <sphereGeometry args={[0.6, 12, 12]} />
+      <meshBasicMaterial color="#f0ffe6" transparent opacity={0.14} depthWrite={false} />
+    </mesh>
+  );
+}
+
+function MistWisps() {
+  const wisps = [
+    { radius: 3.4, speed: 0.05, height: 0.5, phase: 0, scale: 1.3 },
+    { radius: 4.6, speed: 0.04, height: 1.0, phase: 2.1, scale: 1.7 },
+    { radius: 2.7, speed: 0.06, height: 0.3, phase: 4.2, scale: 0.9 },
+  ];
+  return (
+    <>
+      {wisps.map((w, i) => (
+        <MistWisp key={i} {...w} />
+      ))}
+    </>
+  );
+}
+
 const FROG_BASE_YAW = 0;
 
 function IdleCharacter({ modelPath, homePosition, onRipple, scale = 2.1 }) {
@@ -1071,6 +1209,9 @@ function IdleCharacter({ modelPath, homePosition, onRipple, scale = 2.1 }) {
     const hopY = justHopped
       ? Math.abs(Math.sin((3 - timeSincePlan) * 10)) * 0.1
       : Math.sin(t * 1.6) * 0.035;
+    const breathSquash = justHopped
+      ? 1 + Math.sin((3 - timeSincePlan) * 10) * 0.06
+      : 1 + Math.sin(t * 1.1) * 0.015;
 
     if (t > nextGlance.current) {
       nextGlance.current = t + 2 + Math.random() * 2.5;
@@ -1082,6 +1223,7 @@ function IdleCharacter({ modelPath, homePosition, onRipple, scale = 2.1 }) {
     while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
     group.current.rotation.y += angleDelta * 0.04;
     group.current.position.y = offset[1] + hopY;
+    group.current.scale.set(1 / Math.sqrt(breathSquash), breathSquash, 1 / Math.sqrt(breathSquash));
   });
 
   return (
@@ -1187,8 +1329,11 @@ const FrogHabitat3D = ({ characterModel, showCharacter = true }) => {
             <MudPatch />
             <FrontMudFade />
             <Pond />
+            <ShoreStones />
             <FrogLightPatch />
             <WaterBlooms />
+            <LilyBlossoms />
+            <MistWisps />
             <Dragonflies />
 
             <RippleManager ripples={ripples} onRippleDone={removeRipple} />
@@ -1217,9 +1362,9 @@ const FrogHabitat3D = ({ characterModel, showCharacter = true }) => {
             <Flowers />
             <GrassTufts />
             {showCharacter && (
-            <CharacterErrorBoundary position={HOME_PAD_POSITION}>
-              <IdleCharacter modelPath={characterModel} homePosition={HOME_PAD_POSITION} onRipple={addRipple} scale={2.75} />
-            </CharacterErrorBoundary>
+              <CharacterErrorBoundary position={HOME_PAD_POSITION}>
+                <IdleCharacter modelPath={characterModel} homePosition={HOME_PAD_POSITION} onRipple={addRipple} scale={2.75} />
+              </CharacterErrorBoundary>
             )}
           </group>
         </React.Suspense>

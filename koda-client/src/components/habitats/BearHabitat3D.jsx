@@ -1,574 +1,695 @@
-// Bear Habitat **ROUGH draft**
-// what needs to be done/is being worked on: 
-//1. fix the entire habitat, looks a mess 2. have a better color scheme/theme, 
-// 3. use the house 3D asset for bear instead of fox, 4.create 3D tree assets etc???
-// 5. fix the sizing of the bear and take out the movement animation.
-import React, { useRef, useEffect, useState, useMemo } from "react";
+import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF, OrbitControls } from "@react-three/drei";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import "../../styling/components/habitats.css";
 import { DEFAULT_MODEL } from "../../constants/avatars";
-import { useGroundedOffset, seededRand, drawWrapped } from "./habitatUtils";
+import { seededRand, drawWrapped } from "./habitatUtils";
 
-const GROUND_TEX_SIZE = 512;
+const BEAR_MODEL = "/models/characters/bear/bear.glb";
+const HOUSE_MODEL = "/models/habitats/house.glb";
+
+const BEAR_HEIGHT = 0.32;
+const BEAR_POSITION = [0.02, 0.72];
+
+const PALETTE = {
+  background: "#558577",
+  fog: "#6b9a8a",
+  sun: "#ffdca6",
+  rim: "#a8d8cc",
+  hemiSky: "#e8f4ea",
+  hemiGround: "#2c4a3e",
+  groundBase: "hsl(140, 30%, 40%)",
+  pine: "#2f6b56",
+  pineLight: "#3f8a6a",
+  pineDeep: "#255545",
+  bark: "#7a5136",
+  barkDark: "#5c3b27",
+  log: "#9a6f47",
+  stone: "#8f95a0",
+  moss: "#6da776",
+  berry: "#cf3f63",
+  lantern: "#ffcf6e",
+  petal: ["#f6efe0", "#f2c9d4", "#f7dfa0", "#e8ecfa"],
+  mushroomCap: "#d95f4b",
+};
+
+const TEX = 512;
+
 function buildForestFloorTexture() {
   const canvas = document.createElement("canvas");
-  canvas.width = GROUND_TEX_SIZE;
-  canvas.height = GROUND_TEX_SIZE;
+  canvas.width = TEX;
+  canvas.height = TEX;
   const ctx = canvas.getContext("2d");
+  ctx.fillStyle = PALETTE.groundBase;
+  ctx.fillRect(0, 0, TEX, TEX);
 
-  ctx.fillStyle = "hsl(96, 28%, 27%)";
-  ctx.fillRect(0, 0, GROUND_TEX_SIZE, GROUND_TEX_SIZE);
-
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 44; i++) {
     const seed = i * 61 + 3;
-    const bx = (seed * 37) % GROUND_TEX_SIZE;
-    const by = (seed * 53) % GROUND_TEX_SIZE;
-    const radius = 42 + (seed % 5) * 20;
-    const hue = 90 + (seed % 9) * 3;
-    const light = 24 + (seed % 6) * 4;
-    drawWrapped(ctx, bx, by, GROUND_TEX_SIZE, radius, (x, y) => {
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      grad.addColorStop(0, `hsla(${hue}, 36%, ${light}%, 0.55)`);
-      grad.addColorStop(1, `hsla(${hue}, 36%, ${light}%, 0)`);
-      ctx.fillStyle = grad;
+    const bx = (seed * 37) % TEX;
+    const by = (seed * 53) % TEX;
+    const radius = 46 + (seed % 5) * 22;
+    const hue = 132 + (seed % 8) * 5;
+    const light = 38 + (seed % 6) * 6;
+    drawWrapped(ctx, bx, by, TEX, radius, (x, y) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      g.addColorStop(0, `hsla(${hue}, 34%, ${light}%, 0.55)`);
+      g.addColorStop(1, `hsla(${hue}, 34%, ${light}%, 0)`);
+      ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     });
   }
 
-  for (let i = 0; i < 850; i++) {
+  for (let i = 0; i < 560; i++) {
     const seed = i * 17 + 9;
-    const bx = (seed * 31) % GROUND_TEX_SIZE;
-    const by = (seed * 47) % GROUND_TEX_SIZE;
-    const hue = 95 + (seed % 10) * 2;
-    const light = 22 + (seed % 8) * 3;
-    ctx.fillStyle = `hsla(${hue}, 40%, ${light}%, 0.5)`;
-    drawWrapped(ctx, bx, by, GROUND_TEX_SIZE, 6, (x, y) => {
+    const bx = (seed * 31) % TEX;
+    const by = (seed * 47) % TEX;
+    ctx.fillStyle = `hsla(${128 + (seed % 10) * 4}, 36%, ${34 + (seed % 8) * 5}%, 0.5)`;
+    drawWrapped(ctx, bx, by, TEX, 6, (x, y) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate((seed % 12) * 0.26);
       ctx.beginPath();
-      ctx.ellipse(0, 0, 1.3, 4.0, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, 1.2, 5.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     });
   }
 
-  const LEAF_HUES = [18, 32, 8];
-  for (let i = 0; i < 55; i++) {
-    const seed = i * 89 + 13;
-    const lx = (seed * 23) % GROUND_TEX_SIZE;
-    const ly = (seed * 41) % GROUND_TEX_SIZE;
-    const hue = LEAF_HUES[i % LEAF_HUES.length];
-    drawWrapped(ctx, lx, ly, GROUND_TEX_SIZE, 7, (x, y) => {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate((seed % 20) * 0.31);
-      ctx.fillStyle = `hsla(${hue}, 60%, ${42 + (seed % 5) * 4}%, 0.85)`;
+  for (let i = 0; i < 200; i++) {
+    const seed = i * 71 + 5;
+    const bx = (seed * 17) % TEX;
+    const by = (seed * 41) % TEX;
+    drawWrapped(ctx, bx, by, TEX, 10, (x, y) => {
+      ctx.strokeStyle = i % 4 === 0 ? "rgba(214,158,86,0.5)" : "rgba(52,96,74,0.6)";
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.ellipse(0, 0, 4.5, 3.0, 0, 0, Math.PI * 2);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 8 - (seed % 16), y + 5 - (seed % 10));
+      ctx.stroke();
+    });
+  }
+
+  const petalCols = ["rgba(246,239,224,0.85)", "rgba(242,201,212,0.8)", "rgba(247,223,160,0.8)"];
+  for (let i = 0; i < 90; i++) {
+    const seed = i * 29 + 13;
+    const bx = (seed * 23) % TEX;
+    const by = (seed * 59) % TEX;
+    drawWrapped(ctx, bx, by, TEX, 4, (x, y) => {
+      ctx.fillStyle = petalCols[i % 3];
+      ctx.beginPath();
+      ctx.arc(x, y, 1.6, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
     });
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-function Ground({ size = 34 }) {
+const GROUND_SIZE = 9;
+
+function Ground() {
   const tex = useMemo(() => buildForestFloorTexture(), []);
-  const repeats = size / 3.4;
   useEffect(() => {
-    tex.repeat.set(repeats, repeats);
-  }, [tex, repeats]);
+    tex.repeat.set(GROUND_SIZE / 2.4, GROUND_SIZE / 2.4);
+  }, [tex]);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[size, size]} />
+      <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
       <meshStandardMaterial map={tex} />
     </mesh>
   );
 }
 
-function generateForestRings() {
-  const placements = [];
-  const rings = [
-    { count: 14, rMin: 6.5, rMax: 8.0, scaleMin: 1.2, scaleMax: 1.8 },
-    { count: 20, rMin: 8.5, rMax: 10.8, scaleMin: 1.3, scaleMax: 2.1 },
-    { count: 24, rMin: 11.4, rMax: 15.0, scaleMin: 1.4, scaleMax: 2.5 },
-  ];
-  rings.forEach(({ count, rMin, rMax, scaleMin, scaleMax }) => {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
-      const radius = rMin + Math.random() * (rMax - rMin);
-
-      const nearRiverGap = Math.abs(Math.cos(angle)) < 0.28;
-      if (nearRiverGap && radius < 9.5) continue;
-      placements.push({
-        position: [Math.cos(angle) * radius, Math.sin(angle) * radius],
-        rotation: Math.random() * Math.PI * 2,
-        scale: scaleMin + Math.random() * (scaleMax - scaleMin),
-      });
-    }
+function Pine({ position, height, seed = 1 }) {
+  const ref = useRef(null);
+  const phase = useMemo(() => seededRand(seed) * 8, [seed]);
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.rotation.z = Math.sin(clock.getElapsedTime() * 0.4 + phase) * 0.02;
   });
-  return placements;
-}
-const TREE_PLACEMENTS = generateForestRings();
-
-function Tree({ position, rotation, scale, sourceScene }) {
-  const object = useMemo(() => sourceScene.clone(), [sourceScene]);
-  const offset = useGroundedOffset(object);
+  const tiers = useMemo(
+    () =>
+      Array.from({ length: 4 }).map((_, i) => ({
+        y: height * (0.32 + i * 0.19),
+        radius: 0.16 * (1 - i * 0.2) * (height / 0.5),
+        h: height * 0.34,
+        color: i % 2 ? PALETTE.pine : PALETTE.pineLight,
+      })),
+    [height],
+  );
   return (
-    <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
-      <primitive
-        object={object}
-        scale={scale}
-        position={[offset[0] * scale, offset[1] * scale, offset[2] * scale]}
-      />
+    <group position={position} ref={ref}>
+      <mesh position={[0, height * 0.17, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.016, 0.026, height * 0.36, 8]} />
+        <meshStandardMaterial color={PALETTE.bark} roughness={0.95} />
+      </mesh>
+      {tiers.map((t, i) => (
+        <mesh key={i} position={[0, t.y, 0]} castShadow>
+          <coneGeometry args={[t.radius, t.h, 9]} />
+          <meshStandardMaterial color={t.color} roughness={0.85} flatShading />
+        </mesh>
+      ))}
+      <mesh position={[0, height * 1.02, 0]} castShadow>
+        <coneGeometry args={[0.035, height * 0.24, 8]} />
+        <meshStandardMaterial color={PALETTE.pineDeep} roughness={0.85} flatShading />
+      </mesh>
     </group>
   );
 }
 
-function Trees() {
-  const { scene } = useGLTF('/models/habitats/trees.glb');
+const PINES = [
+  { position: [-0.92, 0, -0.86], height: 0.5, seed: 3 },
+  { position: [0.545, 0, -0.55], height: 0.56, seed: 9 },
+  { position: [0.152, 0, -0.95], height: 0.62, seed: 17 },
+  { position: [-0.78, 0, 0.28], height: 0.44, seed: 23 },
+  { position: [0.639, 0, 0.25], height: 0.46, seed: 31 },
+  { position: [0.447, 0, -1.15], height: 0.54, seed: 41 },
+  { position: [-0.376, 0, -1.2], height: 0.5, seed: 47 },
+];
+
+function LogCabin() {
+  const glow = useRef(null);
+  useFrame(({ clock }) => {
+    const m = glow.current?.material;
+    if (m) m.opacity = 0.75 + Math.sin(clock.getElapsedTime() * 2.2) * 0.15;
+  });
+  const logs = useMemo(() => [0.07, 0.19, 0.31, 0.43], []);
   return (
-    <>
-      {TREE_PLACEMENTS.map((t, i) => (
-        <Tree key={i} sourceScene={scene} {...t} />
+    <group position={[-0.62, 0, -0.3]} rotation={[0, 0.6, 0]} scale={0.45}>
+      {logs.map((y, i) => (
+        <mesh key={i} position={[0, y, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.72, 0.11, 0.6]} />
+          <meshStandardMaterial color={i % 2 ? PALETTE.log : "#8b6340"} roughness={0.95} />
+        </mesh>
       ))}
-    </>
+      <mesh position={[0, 0.62, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+        <coneGeometry args={[0.62, 0.34, 4]} />
+        <meshStandardMaterial color="#4b6b5c" roughness={0.9} flatShading />
+      </mesh>
+      <mesh position={[0, 0.19, 0.31]}>
+        <planeGeometry args={[0.24, 0.36]} />
+        <meshBasicMaterial color="#2a1c13" />
+      </mesh>
+      <mesh ref={glow} position={[0, 0.2, 0.315]}>
+        <planeGeometry args={[0.2, 0.3]} />
+        <meshBasicMaterial color={PALETTE.lantern} transparent opacity={0.8} />
+      </mesh>
+      <mesh position={[0.3, 0.5, 0.28]}>
+        <sphereGeometry args={[0.05, 10, 8]} />
+        <meshBasicMaterial color={PALETTE.lantern} />
+      </mesh>
+      <pointLight position={[0.3, 0.5, 0.3]} intensity={0.5} distance={1.6} color={PALETTE.lantern} />
+    </group>
   );
 }
 
-class TreesErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { failed: false };
+const TUFTS = (() => {
+  const out = [];
+  for (let i = 0; i < 150; i++) {
+    const seed = i * 37 + 11;
+    const x = (seededRand(seed) - 0.5) * 4.6;
+    const z = -1.7 + seededRand(seed * 1.9) * 4.3;
+    if (Math.hypot(x - BEAR_POSITION[0], z - BEAR_POSITION[1]) < 0.3) continue;
+    if (Math.hypot(x + 0.55, z + 0.45) < 0.55) continue;
+    out.push({ position: [x, 0, z], rotation: seededRand(seed * 2.7) * Math.PI, scale: 0.5 + seededRand(seed * 3.3) * 0.4 });
   }
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    if (this.state.failed) return null;
-    return this.props.children;
-  }
-}
+  return out;
+})();
 
-function buildStreamTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-
-  const gradient = ctx.createLinearGradient(0, 0, 128, 0);
-  gradient.addColorStop(0, "#4f96a8");
-  gradient.addColorStop(0.5, "#5fb0b8");
-  gradient.addColorStop(1, "#4f96a8");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 128, 128);
-
+const FLOWERS = (() => {
+  const out = [];
   for (let i = 0; i < 26; i++) {
     const seed = i * 53 + 7;
-    const gx = (seed * 19) % 128;
-    const gy = (seed * 31) % 128;
-    const r = 1 + (seed % 3) * 0.9;
-    ctx.fillStyle = `rgba(255,255,255,${0.06 + (seed % 4) * 0.025})`;
-    ctx.beginPath();
-    ctx.ellipse(gx, gy, r * 2.2, r, (seed % 6) * 0.5, 0, Math.PI * 2);
-    ctx.fill();
+    const x = (seededRand(seed) - 0.5) * 4.2;
+    const z = -1.4 + seededRand(seed * 2.1) * 4.0;
+    if (Math.hypot(x - BEAR_POSITION[0], z - BEAR_POSITION[1]) < 0.32) continue;
+    if (Math.hypot(x + 0.55, z + 0.45) < 0.5) continue;
+    out.push({
+      position: [x, 0, z],
+      rotation: seededRand(seed * 3.7) * Math.PI,
+      scale: 0.7 + seededRand(seed * 4.3) * 0.5,
+      color: PALETTE.petal[i % PALETTE.petal.length],
+    });
   }
+  return out;
+})();
 
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function buildStreamGeometry(length = 30, baseWidth = 2.6, segments = 40) {
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-  for (let i = 0; i <= segments; i++) {
-    const v = i / segments;
-    const z = -length / 2 + v * length;
-    const bend = Math.sin(v * Math.PI * 2.2) * 1.1;
-    const width = baseWidth * (0.85 + 0.15 * Math.sin(v * Math.PI * 3.1));
-    positions.push(bend - width / 2, 0, z, bend + width / 2, 0, z);
-    uvs.push(0, v, 1, v);
-    if (i < segments) {
-      const a = i * 2;
-      const b = a + 1;
-      const c = a + 2;
-      const d = a + 3;
-      indices.push(a, c, b, b, c, d);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function Stream() {
-  const tex = useMemo(() => buildStreamTexture(), []);
-  const geo = useMemo(() => buildStreamGeometry(), []);
-  const ref = useRef();
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    const t = clock.getElapsedTime();
-    ref.current.material.opacity = 0.9 + Math.sin(t * 0.6) * 0.05;
-  });
-  return (
-    <mesh ref={ref} geometry={geo} rotation={[-Math.PI / 2, 0, 0]} position={[2.4, 0.02, 0]}>
-      <meshStandardMaterial map={tex} roughness={0.2} metalness={0.1} transparent opacity={0.92} />
-    </mesh>
-  );
-}
-
-function JumpingFish({ streamX = 2.4, z = 1.5, delay = 0 }) {
-  const ref = useRef();
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    const cycle = 5;
-    const t = (clock.getElapsedTime() + delay) % cycle;
-    const jumping = t < 0.9;
-    if (jumping) {
-      const p = t / 0.9;
-      ref.current.visible = true;
-      ref.current.position.y = Math.sin(p * Math.PI) * 0.5;
-      ref.current.rotation.x = -Math.PI / 2 + Math.sin(p * Math.PI) * 0.8;
-    } else {
-      ref.current.visible = false;
-    }
-  });
-  return (
-    <mesh ref={ref} position={[streamX, 0, z]}>
-      <capsuleGeometry args={[0.05, 0.16, 4, 8]} />
-      <meshStandardMaterial color="#8a9aa0" roughness={0.4} metalness={0.2} />
-    </mesh>
-  );
-}
-
-function RockCluster({ position, scale = 1, rotation = 0 }) {
+function Flower({ position, rotation, scale, color }) {
   return (
     <group position={position} rotation={[0, rotation, 0]} scale={scale}>
-      <mesh position={[0, 0.24, 0]} rotation={[0.15, 0.6, 0.05]} castShadow receiveShadow>
-        <dodecahedronGeometry args={[0.34, 1]} />
-        <meshStandardMaterial color="#8a8f94" roughness={0.9} />
-      </mesh>
-      <mesh position={[0.22, 0.13, 0.14]} rotation={[0.3, 1.2, 0.1]} castShadow receiveShadow>
-        <dodecahedronGeometry args={[0.17, 1]} />
-        <meshStandardMaterial color="#93989c" roughness={0.9} />
-      </mesh>
-      <mesh position={[-0.16, 0.09, -0.1]} rotation={[0.1, 0.4, 0.2]} castShadow receiveShadow>
-        <dodecahedronGeometry args={[0.12, 1]} />
-        <meshStandardMaterial color="#7d8388" roughness={0.9} />
-      </mesh>
-      <mesh position={[0.02, 0.44, 0.06]} rotation={[0, 0.4, 0]}>
-        <sphereGeometry args={[0.1, 8, 6]} />
-        <meshStandardMaterial color="#4f7a44" roughness={0.9} />
-      </mesh>
-    </group>
-  );
-}
-const ROCK_PLACEMENTS = [
-  { position: [1.4, 0, 2.6], scale: 0.8, rotation: 0.4 },
-  { position: [3.3, 0, -1.4], scale: 0.65, rotation: 2.0 },
-  { position: [0.7, 0, -2.8], scale: 0.7, rotation: 1.1 },
-];
-
-function HollowLog({ position = [-1.6, -0.6], rotation = 0.3 }) {
-  return (
-    <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
-      <mesh position={[0, 0.32, 0]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.34, 0.38, 2.4, 12]} />
-        <meshStandardMaterial color="#6b4a34" roughness={0.9} />
-      </mesh>
-      <mesh position={[1.2, 0.32, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.24, 0.24, 0.06, 12]} />
-        <meshStandardMaterial color="#241a12" roughness={1} />
-      </mesh>
-      <mesh position={[0, 0.5, 0.2]} rotation={[0.3, 0, 0]} castShadow>
-        <sphereGeometry args={[0.14, 8, 6]} />
-        <meshStandardMaterial color="#4f7a44" roughness={0.9} />
-      </mesh>
-      <mesh position={[-0.5, 0.5, -0.15]} rotation={[0.2, 0, 0]} castShadow>
-        <sphereGeometry args={[0.1, 8, 6]} />
-        <meshStandardMaterial color="#588252" roughness={0.9} />
-      </mesh>
-    </group>
-  );
-}
-
-const MUSHROOM_CAP_COLORS = ["#ff6f6f", "#ffb3c6", "#ffd166"];
-function Mushroom({ position, rotation, scale, colorIndex }) {
-  const capColor = MUSHROOM_CAP_COLORS[colorIndex % MUSHROOM_CAP_COLORS.length];
-  return (
-    <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]} scale={scale}>
-      <mesh position={[0, 0.16, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.07, 0.09, 0.32, 8]} />
-        <meshStandardMaterial color="#fff3e2" roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
-        <sphereGeometry args={[0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color={capColor} roughness={0.55} />
-      </mesh>
-    </group>
-  );
-}
-const MUSHROOM_PLACEMENTS = [
-  { position: [-2.6, -1.5], rotation: 0.6, scale: 0.7, colorIndex: 0 },
-  { position: [-2.1, 0.6], rotation: 2.0, scale: 0.6, colorIndex: 1 },
-  { position: [4.6, 3.4], rotation: 1.1, scale: 0.65, colorIndex: 2 },
-];
-function Mushrooms() {
-  return (
-    <>
-      {MUSHROOM_PLACEMENTS.map((m, i) => (
-        <Mushroom key={i} {...m} />
-      ))}
-    </>
-  );
-}
-
-const BERRY_COLOR = "#8f2a3a";
-function BerryBush({ position, scale }) {
-  return (
-    <group position={[position[0], 0, position[1]]} scale={scale}>
-      <mesh position={[0, 0.22, 0]} castShadow receiveShadow>
-        <sphereGeometry args={[0.26, 9, 7]} />
-        <meshStandardMaterial color="#4c7a3f" roughness={0.85} />
-      </mesh>
-      <mesh position={[0.18, 0.16, 0.1]} castShadow receiveShadow>
-        <sphereGeometry args={[0.18, 8, 6]} />
-        <meshStandardMaterial color="#588a49" roughness={0.85} />
-      </mesh>
-      <mesh position={[-0.15, 0.14, -0.12]} castShadow receiveShadow>
-        <sphereGeometry args={[0.16, 8, 6]} />
-        <meshStandardMaterial color="#588a49" roughness={0.85} />
-      </mesh>
       {[0, 1, 2, 3, 4].map((i) => {
         const a = (i / 5) * Math.PI * 2;
         return (
-          <mesh key={i} position={[Math.cos(a) * 0.22, 0.26 + (i % 2) * 0.06, Math.sin(a) * 0.22]}>
-            <sphereGeometry args={[0.03, 6, 6]} />
-            <meshStandardMaterial color={BERRY_COLOR} />
+          <mesh key={i} position={[Math.cos(a) * 0.022, 0.018, Math.sin(a) * 0.022]} rotation={[0.5, a, 0]}>
+            <sphereGeometry args={[0.018, 6, 5]} />
+            <meshStandardMaterial color={color} roughness={0.6} />
+          </mesh>
+        );
+      })}
+      <mesh position={[0, 0.024, 0]}>
+        <sphereGeometry args={[0.013, 6, 5]} />
+        <meshStandardMaterial color={PALETTE.lantern} roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+const MUSHROOMS = [
+  { position: [-0.62, 0, -0.62], scale: 1, rotation: 0.4 },
+  { position: [0.66, 0, -0.42], scale: 0.8, rotation: 2.1 },
+  { position: [0.52, 0, -0.75], scale: 1.15, rotation: 1.2 },
+  { position: [-0.72, 0, 0.5], scale: 0.75, rotation: 2.9 },
+  { position: [-0.28, 0, 1.85], scale: 0.9, rotation: 0.8 },
+];
+
+function Mushroom({ position, scale = 1, rotation = 0 }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]} scale={scale}>
+      <mesh position={[0, 0.035, 0]} castShadow>
+        <cylinderGeometry args={[0.016, 0.022, 0.07, 8]} />
+        <meshStandardMaterial color="#efe6d2" roughness={0.8} />
+      </mesh>
+      <mesh position={[0, 0.085, 0]} castShadow>
+        <sphereGeometry args={[0.042, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshStandardMaterial color={PALETTE.mushroomCap} roughness={0.55} />
+      </mesh>
+      {[
+        [0.02, 0.108, 0.008],
+        [-0.016, 0.104, -0.014],
+        [0.002, 0.118, -0.02],
+      ].map((p, i) => (
+        <mesh key={i} position={p}>
+          <sphereGeometry args={[0.006, 6, 5]} />
+          <meshStandardMaterial color="#f6efe0" roughness={0.6} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+const PATH_STONES = [
+  { position: [-0.235, 0.012, -0.35], scale: [0.1, 0.024, 0.085], rotation: 0.4 },
+  { position: [-0.175, 0.012, -0.1], scale: [0.095, 0.024, 0.08], rotation: 1.3 },
+  { position: [-0.11, 0.012, 0.15], scale: [0.105, 0.024, 0.085], rotation: 2.1 },
+  { position: [-0.045, 0.012, 0.4], scale: [0.095, 0.022, 0.08], rotation: 0.8 },
+  { position: [-0.005, 0.012, 0.6], scale: [0.09, 0.022, 0.075], rotation: 1.9 },
+];
+
+function SteppingStones() {
+  return (
+    <>
+      {PATH_STONES.map((s, i) => (
+        <mesh key={i} position={s.position} rotation={[0, s.rotation, 0]} scale={s.scale} receiveShadow castShadow>
+          <cylinderGeometry args={[1, 1.1, 1, 9]} />
+          <meshStandardMaterial color="#9aa0ab" roughness={0.95} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+const GARDEN_ROWS = [
+  { x: -0.09, plants: 3, kind: "sprout" },
+  { x: 0, plants: 3, kind: "carrot" },
+  { x: 0.09, plants: 3, kind: "flower" },
+];
+
+function Garden({ position = [-0.5, 0, -0.18], rotation = 0.55 }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <mesh position={[0, 0.015, 0]} scale={[0.32, 0.03, 0.22]} receiveShadow castShadow>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#5c4230" roughness={1} />
+      </mesh>
+      {GARDEN_ROWS.map((row, ri) =>
+        Array.from({ length: row.plants }).map((_, pi) => {
+          const z = -0.06 + pi * 0.06;
+          const key = `${ri}-${pi}`;
+          if (row.kind === "carrot") {
+            return (
+              <group key={key} position={[row.x, 0, z]}>
+                <mesh position={[0, 0.035, 0]}>
+                  <coneGeometry args={[0.016, 0.05, 6]} />
+                  <meshStandardMaterial color="#e8935a" roughness={0.7} />
+                </mesh>
+                <mesh position={[0, 0.068, 0]}>
+                  <coneGeometry args={[0.014, 0.03, 4]} />
+                  <meshStandardMaterial color="#5f9e6a" roughness={0.9} flatShading />
+                </mesh>
+              </group>
+            );
+          }
+          if (row.kind === "flower") {
+            return (
+              <group key={key} position={[row.x, 0, z]}>
+                <mesh position={[0, 0.032, 0]}>
+                  <sphereGeometry args={[0.02, 6, 5]} />
+                  <meshStandardMaterial color={PALETTE.petal[(ri + pi) % PALETTE.petal.length]} roughness={0.6} />
+                </mesh>
+                <mesh position={[0, 0.04, 0]}>
+                  <sphereGeometry args={[0.009, 6, 5]} />
+                  <meshStandardMaterial color={PALETTE.lantern} roughness={0.5} />
+                </mesh>
+              </group>
+            );
+          }
+          return (
+            <group key={key} position={[row.x, 0, z]}>
+              {[0, 1, 2].map((li) => {
+                const a = (li / 3) * Math.PI * 2;
+                return (
+                  <mesh key={li} position={[Math.cos(a) * 0.012, 0.03, Math.sin(a) * 0.012]} rotation={[0.3, a, 0]}>
+                    <coneGeometry args={[0.009, 0.05, 3]} />
+                    <meshStandardMaterial color="#67a674" roughness={0.9} side={THREE.DoubleSide} />
+                  </mesh>
+                );
+              })}
+            </group>
+          );
+        }),
+      )}
+      {[
+        [-0.18, -0.13],
+        [0, -0.14],
+        [0.18, -0.13],
+        [-0.18, 0.13],
+        [0, 0.14],
+        [0.18, 0.13],
+      ].map(([fx, fz], i) => (
+        <mesh key={i} position={[fx, 0.03, fz]} castShadow>
+          <cylinderGeometry args={[0.008, 0.01, 0.06, 5]} />
+          <meshStandardMaterial color={PALETTE.bark} roughness={0.95} />
+        </mesh>
+      ))}
+      {[
+        { z: -0.135, r: 0 },
+        { z: 0.135, r: 0 },
+      ].map((rail, i) => (
+        <mesh key={i} position={[0, 0.045, rail.z]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.005, 0.005, 0.38, 5]} />
+          <meshStandardMaterial color={PALETTE.barkDark} roughness={0.95} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+const SMOKE_PUFFS = Array.from({ length: 12 }).map((_, i) => ({ offset: i / 12 }));
+
+function ChimneySmoke({ position = [-0.46, 0.56, -0.68] }) {
+  const refs = useRef([]);
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime() * 0.14;
+    refs.current.forEach((m, i) => {
+      if (!m) return;
+      const p = (t + SMOKE_PUFFS[i].offset) % 1;
+      m.position.set(
+        Math.sin(p * 5.2) * 0.03 * p + p * p * 0.1,
+        p * 0.5,
+        Math.cos(p * 4.1) * 0.015 * p,
+      );
+      const s = 0.018 + p * 0.055;
+      m.scale.set(s, s * 0.85, s);
+      m.material.opacity = 0.22 * Math.sin(Math.min(p / 0.15, 1) * Math.PI * 0.5) * (1 - p) * (1 - p);
+    });
+  });
+  return (
+    <group position={position}>
+      {SMOKE_PUFFS.map((_, i) => (
+        <mesh key={i} ref={(el) => (refs.current[i] = el)}>
+          <sphereGeometry args={[1, 10, 8]} />
+          <meshBasicMaterial color="#efece4" transparent opacity={0.2} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Woodpile({ position = [0.02, 0, -0.42], rotation = 0.55 }) {
+  const logs = [
+    { p: [-0.05, 0.018, 0], l: 0.16 },
+    { p: [0.05, 0.018, 0.01], l: 0.15 },
+    { p: [0, 0.018, -0.045], l: 0.14 },
+    { p: [-0.025, 0.052, -0.01], l: 0.15 },
+    { p: [0.03, 0.052, -0.02], l: 0.13 },
+    { p: [0, 0.084, -0.015], l: 0.12 },
+  ];
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      {logs.map((log, i) => (
+        <group key={i} position={log.p} rotation={[0, (i % 3) * 0.12 - 0.1, 0]}>
+          <mesh rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
+            <cylinderGeometry args={[0.017, 0.017, log.l, 8]} />
+            <meshStandardMaterial color={i % 2 ? PALETTE.log : "#8b6340"} roughness={0.95} />
+          </mesh>
+          {[-1, 1].map((end) => (
+            <mesh key={end} position={[(log.l / 2) * end, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.0175, 0.0175, 0.004, 8]} />
+              <meshStandardMaterial color="#d8b98a" roughness={0.9} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      <mesh position={[0.16, 0.03, 0.04]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.045, 0.055, 0.06, 10]} />
+        <meshStandardMaterial color={PALETTE.bark} roughness={0.95} />
+      </mesh>
+    </group>
+  );
+}
+
+function Tuft({ position, rotation, scale }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]} scale={scale}>
+      {[0, 1, 2].map((i) => {
+        const a = (i / 3) * Math.PI * 2;
+        return (
+          <mesh key={i} position={[Math.cos(a) * 0.02, 0.045, Math.sin(a) * 0.02]} rotation={[0.32, a, 0]}>
+            <coneGeometry args={[0.011, 0.075, 3]} />
+            <meshStandardMaterial color={i % 2 ? "#4e8c62" : "#67a674"} roughness={0.9} side={THREE.DoubleSide} />
           </mesh>
         );
       })}
     </group>
   );
 }
-const BUSH_PLACEMENTS = [
-  { position: [-3.6, 1.6], scale: 0.9 },
-  { position: [-4.2, -2.4], scale: 0.8 },
-  { position: [3.8, 1.2], scale: 0.75 },
-];
-function BerryBushes() {
-  return (
-    <>
-      {BUSH_PLACEMENTS.map((b, i) => (
-        <BerryBush key={i} {...b} />
-      ))}
-    </>
+
+function BerryBush({ position, scale = 1, seed = 1 }) {
+  const berries = useMemo(
+    () =>
+      Array.from({ length: 7 }).map((_, i) => {
+        const a = (i / 7) * Math.PI * 2 + seededRand(seed + i) * 2;
+        const r = 0.1 + seededRand(seed + i * 3) * 0.06;
+        return [Math.cos(a) * r, 0.1 + seededRand(seed + i * 5) * 0.09, Math.sin(a) * r];
+      }),
+    [seed],
   );
-}
-
-const GRASS_TUFT_PLACEMENTS = Array.from({ length: 24 })
-  .map((_, i) => {
-    const angle = seededRand(i * 3.1) * Math.PI * 2;
-    const r = 2.0 + seededRand(i * 7.7) * 4.4;
-    return {
-      position: [Math.cos(angle) * r, Math.sin(angle) * r],
-      rotation: seededRand(i * 5.3) * Math.PI * 2,
-      scale: 0.65 + seededRand(i * 9.1) * 0.5,
-    };
-  })
-  .filter((t) => Math.abs(t.position[0] - 2.4) > 1.6);
-
-function GrassTuft({ position, rotation, scale }) {
   return (
-    <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]} scale={scale}>
-      {[-0.05, 0, 0.05].map((dx, i) => (
-        <mesh key={i} position={[dx, 0.09, 0]} rotation={[0, 0, dx * 2.5]} castShadow>
-          <coneGeometry args={[0.02, 0.2, 5]} />
-          <meshStandardMaterial color={i === 1 ? "#4f8a41" : "#5f9a4e"} roughness={0.8} />
+    <group position={position} scale={scale}>
+      <mesh position={[0, 0.1, 0]} scale={[1, 0.8, 1]} castShadow receiveShadow>
+        <icosahedronGeometry args={[0.16, 1]} />
+        <meshStandardMaterial color={PALETTE.pineLight} roughness={0.9} flatShading />
+      </mesh>
+      {berries.map((p, i) => (
+        <mesh key={i} position={p} castShadow>
+          <sphereGeometry args={[0.022, 8, 6]} />
+          <meshStandardMaterial color={PALETTE.berry} roughness={0.4} />
         </mesh>
       ))}
     </group>
   );
 }
-function GrassTufts() {
-  return (
-    <>
-      {GRASS_TUFT_PLACEMENTS.map((t, i) => (
-        <GrassTuft key={i} {...t} />
-      ))}
-    </>
-  );
-}
 
-const PEBBLE_COLORS = ["#8d97a0", "#b5aa96", "#a3aaa1", "#c3b8a5"];
-const PEBBLE_CLUSTERS = [
-  { position: [1.0, 1.4], count: 3 },
-  { position: [1.1, -0.6], count: 2 },
-  { position: [1.3, -2.2], count: 3 },
+const BUSHES = [
+  { position: [0.411, 0, -0.08], scale: 0.5, seed: 51 },
+  { position: [-0.455, 0, 0.75], scale: 0.46, seed: 61 },
+  { position: [0.518, 0, 0.35], scale: 0.55, seed: 5 },
+  { position: [0.577, 0, 0.02], scale: 0.45, seed: 13 },
+  { position: [-0.557, 0, 0.8], scale: 0.5, seed: 21 },
+  { position: [0.349, 0, 1.45], scale: 0.42, seed: 29 },
+  { position: [-0.503, 0, 1.55], scale: 0.48, seed: 37 },
 ];
-function pebbleSeed(position, index, offset) {
-  return seededRand((position[0] * 131.1 + position[1] * 71.7 + index * 33.3 + offset) * 12.9898);
-}
-function PebbleCluster({ position, count }) {
-  const pebbles = useMemo(() => {
-    return Array.from({ length: count }).map((_, i) => {
-      const r1 = pebbleSeed(position, i, 1);
-      const r2 = pebbleSeed(position, i, 2);
-      const r3 = pebbleSeed(position, i, 3);
-      return {
-        offset: [(r1 - 0.5) * 0.4, (r2 - 0.5) * 0.4],
-        radius: 0.06 + r3 * 0.07,
-        squish: [0.85 + r1 * 0.3, 0.55 + r2 * 0.3, 0.85 + r3 * 0.3],
-        color: PEBBLE_COLORS[i % PEBBLE_COLORS.length],
-        rotation: r1 * Math.PI * 2,
-      };
-    });
-  }, [position, count]);
+
+function HoneyPot() {
   return (
-    <group position={[position[0], 0, position[1]]}>
-      {pebbles.map((p, i) => (
-        <mesh
-          key={i}
-          position={[p.offset[0], p.radius * p.squish[1] * 0.5, p.offset[1]]}
-          rotation={[0.15, p.rotation, 0.08]}
-          scale={[p.radius * p.squish[0], p.radius * p.squish[1], p.radius * p.squish[2]]}
-          castShadow
-          receiveShadow
-        >
-          <icosahedronGeometry args={[1, 1]} />
-          <meshStandardMaterial color={p.color} roughness={0.6} />
-        </mesh>
-      ))}
+    <group position={[0.38, 0, 0.92]} rotation={[0, 0.4, 0]} scale={0.42}>
+      <mesh position={[0, 0.07, 0]} castShadow receiveShadow>
+        <sphereGeometry args={[0.08, 14, 10]} />
+        <meshStandardMaterial color="#c98a54" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, 0.14, 0]}>
+        <cylinderGeometry args={[0.05, 0.06, 0.03, 12]} />
+        <meshStandardMaterial color="#f2c766" roughness={0.4} />
+      </mesh>
     </group>
   );
 }
-function Pebbles() {
+
+const STONES = [
+  { position: [-0.237, 0.04, 0.35], scale: 0.07, rotation: 2.4 },
+  { position: [0.36, 0.04, 1.3], scale: 0.08, rotation: 1.1 },
+  { position: [-0.376, 0.04, 1.15], scale: 0.08, rotation: 0.6 },
+  { position: [0.586, 0.04, 0.95], scale: 0.09, rotation: 2.1 },
+  { position: [-0.63, 0.05, 0.15], scale: 0.11, rotation: 1.3 },
+];
+
+function Stones() {
   return (
     <>
-      {PEBBLE_CLUSTERS.map((c, i) => (
-        <PebbleCluster key={i} {...c} />
+      {STONES.map((s, i) => (
+        <group key={i} position={s.position} rotation={[0.1, s.rotation, 0.07]} scale={s.scale}>
+          <mesh castShadow receiveShadow>
+            <dodecahedronGeometry args={[1, 0]} />
+            <meshStandardMaterial color={PALETTE.stone} roughness={0.9} />
+          </mesh>
+          <mesh position={[0.03, 0.5, -0.04]} scale={[0.74, 0.2, 0.68]}>
+            <sphereGeometry args={[1, 12, 8]} />
+            <meshStandardMaterial color={PALETTE.moss} roughness={1} />
+          </mesh>
+        </group>
       ))}
     </>
   );
 }
 
-function useFreeRoam({ bounds = 4, minHeight = 0.6, maxHeight = 1.3, speed = 0.4 } = {}) {
-  const state = useMemo(() => {
-    const randPoint = () =>
-      new THREE.Vector3(
-        (Math.random() - 0.5) * bounds * 2 - 1.5,
-        minHeight + Math.random() * (maxHeight - minHeight),
-        (Math.random() - 0.5) * bounds * 2
-      );
-    return { pos: randPoint(), target: randPoint() };
-  }, [bounds, minHeight, maxHeight]);
-
-  const step = (delta) => {
-    const dir = state.target.clone().sub(state.pos);
-    const dist = dir.length();
-    if (dist < 0.15) {
-      state.target.set(
-        (Math.random() - 0.5) * bounds * 2 - 1.5,
-        minHeight + Math.random() * (maxHeight - minHeight),
-        (Math.random() - 0.5) * bounds * 2
-      );
-    } else {
-      dir.normalize();
-      state.pos.addScaledVector(dir, Math.min(speed * delta, dist));
-    }
-    return state.pos;
-  };
-
-  return { step };
-}
-function Firefly({ bounds, speed, height }) {
-  const ref = useRef();
-  const { step } = useFreeRoam({ bounds, minHeight: height - 0.2, maxHeight: height + 0.3, speed });
-  const bobPhase = useMemo(() => Math.random() * Math.PI * 2, []);
-  useFrame(({ clock }, delta) => {
-    const pos = step(delta);
-    if (ref.current) {
-      ref.current.position.set(pos.x, pos.y + Math.sin(clock.getElapsedTime() * 2 + bobPhase) * 0.08, pos.z);
-    }
+function Firefly({ radius, speed, phase, height }) {
+  const ref = useRef(null);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const t = clock.getElapsedTime() * speed + phase;
+    ref.current.position.set(Math.cos(t) * radius, height + Math.sin(t * 2.3) * 0.15, Math.sin(t * 0.9) * radius * 0.6 - 0.3);
+    ref.current.material.opacity = 0.35 + Math.abs(Math.sin(t * 3.1)) * 0.6;
   });
   return (
     <mesh ref={ref}>
-      <sphereGeometry args={[0.025, 8, 8]} />
-      <meshBasicMaterial color="#ffe38a" />
-      <pointLight color="#ffe38a" intensity={0.35} distance={0.9} />
+      <sphereGeometry args={[0.018, 8, 6]} />
+      <meshBasicMaterial color={PALETTE.lantern} transparent opacity={0.8} />
     </mesh>
   );
 }
 
-function WanderingCharacter({ modelPath, homePosition }) {
-  const group = useRef();
-  const { scene } = useGLTF(modelPath);
-  const offset = useGroundedOffset(scene);
-
-  const pos = useRef(new THREE.Vector3(homePosition[0], 0, homePosition[1]));
-  const target = useRef(new THREE.Vector3(homePosition[0], 0, homePosition[1]));
-  const nextDecision = useRef(0);
-  const speed = 0.4;
-
-  const pickNewTarget = () => {
-    const angle = Math.random() * Math.PI * 2;
-    const r = Math.random() * 2.2;
-    target.current.set(homePosition[0] + Math.cos(angle) * r, 0, homePosition[1] + Math.sin(angle) * r);
-  };
-
-  useFrame(({ clock }, delta) => {
-    if (!group.current) return;
-    const t = clock.getElapsedTime();
-
-    if (t > nextDecision.current) {
-      pickNewTarget();
-      nextDecision.current = t + 3.5 + Math.random() * 3;
-    }
-
-    const toTarget = target.current.clone().sub(pos.current);
-    const dist = toTarget.length();
-    const moving = dist > 0.05;
-
-    if (moving) {
-      const step = Math.min(speed * delta, dist);
-      pos.current.addScaledVector(toTarget.clone().normalize(), step);
-      const targetAngle = Math.atan2(toTarget.x, toTarget.z);
-      let angleDelta = targetAngle - group.current.rotation.y;
-      while (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
-      while (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
-      group.current.rotation.y += angleDelta * 0.1;
-    }
-
-    group.current.position.x = pos.current.x;
-    group.current.position.z = pos.current.z;
-    group.current.position.y = Math.sin(t * (moving ? 3.5 : 1.8)) * (moving ? 0.02 : 0.04);
-  });
-
+function Fireflies() {
+  const flies = useMemo(
+    () =>
+      Array.from({ length: 14 }).map((_, i) => ({
+        radius: 0.6 + seededRand(i * 3.3) * 1.4,
+        speed: 0.2 + seededRand(i * 5.5) * 0.22,
+        phase: seededRand(i * 7.7) * 8,
+        height: 0.25 + seededRand(i * 9.1) * 0.75,
+      })),
+    [],
+  );
   return (
-    <group ref={group} position={[homePosition[0], 0, homePosition[1]]}>
-      <primitive object={scene} position={offset} />
+    <>
+      {flies.map((f, i) => (
+        <Firefly key={i} {...f} />
+      ))}
+    </>
+  );
+}
+
+function useNormalizedModel(model, size) {
+  const gltf = useGLTF(model);
+  return useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const dim = box.getSize(new THREE.Vector3());
+    const scale = size / (dim.y || 1);
+    const center = box.getCenter(new THREE.Vector3());
+    clone.scale.setScalar(scale);
+    clone.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+    clone.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    const wrapper = new THREE.Group();
+    wrapper.add(clone);
+    return wrapper;
+  }, [gltf.scene, size]);
+}
+
+function House({ model }) {
+  const normalizedModel = useNormalizedModel(model, 0.55);
+  return (
+    <group position={[-0.4, 0, -0.62]} rotation={[0, 0.55, 0]}>
+      <primitive object={normalizedModel} />
     </group>
   );
 }
 
-class CharacterErrorBoundary extends React.Component {
+function Bear({ model, position = BEAR_POSITION }) {
+  const group = useRef(null);
+  const body = useRef(null);
+  const nextGlance = useRef(1 + Math.random() * 2);
+  const glance = useRef(0);
+  const nextHop = useRef(3 + Math.random() * 3);
+  const hopStart = useRef(-1);
+  const hopCount = useRef(2);
+  const normalizedModel = useNormalizedModel(model, BEAR_HEIGHT);
+
+  useLayoutEffect(() => {
+    if (group.current) group.current.rotation.y = 0;
+  }, [normalizedModel]);
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    const t = clock.getElapsedTime();
+
+    if (t > nextGlance.current) {
+      nextGlance.current = t + 2.2 + Math.random() * 2.5;
+      glance.current = (Math.random() - 0.5) * 0.35;
+    }
+    group.current.rotation.y += (glance.current - group.current.rotation.y) * 0.035;
+
+    let y = Math.sin(t * 1.1) * 0.008;
+    let squash = 1 + Math.sin(t * 1.8) * 0.016;
+
+    if (hopStart.current < 0 && t > nextHop.current) {
+      hopStart.current = t;
+      hopCount.current = 2 + Math.floor(Math.random() * 2);
+    }
+    if (hopStart.current >= 0) {
+      const HOP = 0.42;
+      const e = t - hopStart.current;
+      if (e > HOP * hopCount.current) {
+        hopStart.current = -1;
+        nextHop.current = t + 3.5 + Math.random() * 4;
+      } else {
+        const p = (e % HOP) / HOP;
+        const arc = Math.sin(p * Math.PI);
+        y += arc * BEAR_HEIGHT * 0.16;
+        squash *= p < 0.15 ? 0.94 : 1 + arc * 0.06;
+        group.current.rotation.z = Math.sin(p * Math.PI * 2) * 0.03;
+      }
+    } else {
+      group.current.rotation.z *= 0.9;
+    }
+
+    group.current.position.y = y;
+    if (body.current) {
+      body.current.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+    }
+  });
+
+  return (
+    <group ref={group} position={[position[0], 0, position[1]]}>
+      <group ref={body}>
+        <primitive object={normalizedModel} />
+      </group>
+    </group>
+  );
+}
+
+class BearErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { failed: false };
@@ -576,107 +697,106 @@ class CharacterErrorBoundary extends React.Component {
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch(error) {
+    console.error("Bear model failed to load:", error);
+  }
   render() {
-    if (this.state.failed) {
-      return <WanderingCharacter modelPath={DEFAULT_MODEL} homePosition={this.props.position} />;
-    }
+    if (this.state.failed) return <Bear model={DEFAULT_MODEL} position={this.props.position} />;
     return this.props.children;
   }
 }
 
-const BEAR_HOME_POSITION = [-0.6, 0.6];
-
-const ISO_DISTANCE = 11;
-const ISO_ELEVATION = Math.atan(1 / Math.sqrt(2)) + 0.08;
-const ISO_YAW = 0;
+const ISO_DISTANCE = 4.4;
+const ISO_ELEVATION = Math.atan(1 / Math.sqrt(2)) - 0.05;
+const ISO_ZOOM = 320;
 const ISO_POSITION = [
-  ISO_DISTANCE * Math.cos(ISO_ELEVATION) * Math.sin(ISO_YAW),
+  0,
   ISO_DISTANCE * Math.sin(ISO_ELEVATION),
-  ISO_DISTANCE * Math.cos(ISO_ELEVATION) * Math.cos(ISO_YAW),
+  ISO_DISTANCE * Math.cos(ISO_ELEVATION),
 ];
 
-const BearHabitat3D = ({ characterModel, showCharacter = true }) => {
+const BearHabitat3D = ({ characterModel, showCharacter = true, houseModel, useHouse = true }) => {
+  const house = useHouse ? (houseModel ?? HOUSE_MODEL) : null;
+  const bearModel = characterModel ?? BEAR_MODEL;
+
+  useEffect(() => {
+    if (house) useGLTF.preload(house);
+  }, [house]);
+
+  useEffect(() => {
+    if (bearModel) useGLTF.preload(bearModel);
+  }, [bearModel]);
+
   return (
     <div className="habitat-canvas-wrap habitat-canvas-wrap--no-touch-scroll">
       <Canvas
         shadows
         orthographic
-        camera={{ position: ISO_POSITION, zoom: 44, near: 0.1, far: 60 }}
-        gl={{ toneMappingExposure: 1.2 }}
+        camera={{ position: ISO_POSITION, zoom: ISO_ZOOM, near: 0.1, far: 60 }}
+        gl={{ toneMappingExposure: 1.12 }}
+        dpr={[1, 2]}
         style={{ touchAction: "none" }}
         onCreated={({ gl }) => {
           gl.domElement.style.touchAction = "none";
         }}
       >
-        <color attach="background" args={["#6f8850"]} />
-        <fog attach="fog" args={["#e0b168", 14, 27]} />
+        <color attach="background" args={[PALETTE.background]} />
+        <fog attach="fog" args={[PALETTE.fog, 5, 13]} />
 
-        <OrbitControls
-          makeDefault
-          target={[0, 0.9, 0]}
-          enableDamping
-          dampingFactor={0.08}
-          enablePan
-          screenSpacePanning
-          panSpeed={1}
-          enableRotate
-          rotateSpeed={0.6}
-          minPolarAngle={0.55}
-          maxPolarAngle={1.05}
-          minZoom={30}
-          maxZoom={76}
-          mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}
-          touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
-        />
-
-        <ambientLight intensity={0.75} />
+        <ambientLight intensity={0.7} color="#f3ecdc" />
         <directionalLight
-          position={[5, 7, 3]}
-          intensity={2.4}
-          color="#ffd9a0"
+          position={[5, 8, 3]}
+          intensity={1.7}
+          color={PALETTE.sun}
           castShadow
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-9}
-          shadow-camera-right={9}
-          shadow-camera-top={9}
-          shadow-camera-bottom={-9}
+          shadow-camera-left={-5}
+          shadow-camera-right={5}
+          shadow-camera-top={5}
+          shadow-camera-bottom={-5}
         />
-        <directionalLight position={[-5, 3, -4]} intensity={0.35} color="#8aa0d6" />
-        <hemisphereLight args={["#ffe9c7", "#2c3a24", 1.0]} />
+        <directionalLight position={[-5, 3, -4]} intensity={0.3} color={PALETTE.rim} />
+        <hemisphereLight args={[PALETTE.hemiSky, PALETTE.hemiGround, 0.85]} />
 
-        <React.Suspense fallback={null}>
-          <Ground />
-
-          <TreesErrorBoundary>
-            <React.Suspense fallback={null}>
-              <Trees />
-            </React.Suspense>
-          </TreesErrorBoundary>
-
-          <Stream />
-          <JumpingFish streamX={2.3} z={2.0} delay={0} />
-          <JumpingFish streamX={2.6} z={-1.2} delay={2.5} />
-
-          <HollowLog />
-
-          {ROCK_PLACEMENTS.map((r, i) => (
-            <RockCluster key={i} {...r} />
-          ))}
-
-          <Mushrooms />
-          <BerryBushes />
-          <GrassTufts />
-          <Pebbles />
-
-          <Firefly bounds={2.6} speed={0.35} height={0.9} />
-          <Firefly bounds={2.0} speed={0.4} height={1.2} />
-          <Firefly bounds={3.2} speed={0.3} height={0.7} />
-          {showCharacter &&( 
-          <CharacterErrorBoundary position={BEAR_HOME_POSITION}>
-            <WanderingCharacter modelPath={characterModel} homePosition={BEAR_HOME_POSITION} />
-          </CharacterErrorBoundary>
-          )}
-        </React.Suspense>
+        <Suspense fallback={null}>
+          <group position={[0, -0.18, 0]}>
+            <Ground />
+            {PINES.map((p, i) => (
+              <Pine key={`p${i}`} {...p} />
+            ))}
+            {house ? (
+              <Suspense fallback={<LogCabin />}>
+                <House model={house} />
+              </Suspense>
+            ) : (
+              <LogCabin />
+            )}
+            {BUSHES.map((b, i) => (
+              <BerryBush key={`b${i}`} {...b} />
+            ))}
+            <HoneyPot />
+            {TUFTS.map((t, i) => (
+              <Tuft key={`tf${i}`} {...t} />
+            ))}
+            {FLOWERS.map((f, i) => (
+              <Flower key={`fl${i}`} {...f} />
+            ))}
+            {MUSHROOMS.map((m, i) => (
+              <Mushroom key={`mu${i}`} {...m} />
+            ))}
+            <SteppingStones />
+            <Garden />
+            <Woodpile />
+            {house ? <ChimneySmoke /> : null}
+            <Stones />
+            <Fireflies />
+            {showCharacter && (
+              <BearErrorBoundary position={BEAR_POSITION}>
+                <Bear model={bearModel} position={BEAR_POSITION} />
+              </BearErrorBoundary>
+            )}
+          </group>
+        </Suspense>
       </Canvas>
     </div>
   );
